@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>ESP32 Robot Controller</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    .control-btn { transition: transform 0.1s; }
+    .control-btn:active { transform: scale(0.95); }
+    .dark body { background-color: #181818; color: #f0f0f0; }
+    .dark .bg-white { background-color: #242424; }
+  </style>
+</head>
+<body class="bg-gray-100 min-h-screen p-4">
+  <div class="max-w-xl mx-auto space-y-6">
+    <h1 class="text-3xl font-bold text-center text-blue-600">ESP32 Robot Controller</h1>
+
+    <div class="bg-white rounded shadow p-4">
+      <h2 class="text-xl font-semibold text-blue-600 mb-2">Connection</h2>
+      <button id="connectBtn" class="bg-blue-600 text-white px-4 py-2 rounded">Connect</button>
+      <span id="connectionStatus" class="ml-3 text-gray-700">Disconnected</span>
+    </div>
+
+    <div class="bg-white rounded shadow p-4">
+      <h2 class="text-xl font-semibold text-blue-600 mb-2">Movement</h2>
+      <div class="grid grid-cols-3 gap-2 max-w-xs mx-auto">
+        <div></div>
+        <button class="control-btn bg-blue-600 text-white py-2 rounded" data-command="f">↑</button>
+        <div></div>
+        <button class="control-btn bg-blue-600 text-white py-2 rounded" data-command="l">←</button>
+        <button class="control-btn bg-red-500 text-white py-2 rounded" data-command="s">■</button>
+        <button class="control-btn bg-blue-600 text-white py-2 rounded" data-command="r">→</button>
+        <div></div>
+        <button class="control-btn bg-blue-600 text-white py-2 rounded" data-command="b">↓</button>
+        <div></div>
+      </div>
+    </div>
+
+    <div class="bg-white rounded shadow p-4">
+      <h2 class="text-xl font-semibold text-blue-600 mb-2">Expressions</h2>
+      <div class="flex gap-2 flex-wrap justify-center">
+        <button class="control-btn bg-yellow-400 text-black px-4 py-2 rounded" data-command="h">😊 Happy</button>
+        <button class="control-btn bg-red-600 text-white px-4 py-2 rounded" data-command="a">😠 Angry</button>
+        <button class="control-btn bg-green-500 text-white px-4 py-2 rounded" data-command="j">😂 Joke</button>
+      </div>
+    </div>
+
+    <div class="bg-white rounded shadow p-4">
+      <h2 class="text-xl font-semibold text-blue-600 mb-2">Text to Speech</h2>
+      <textarea id="ttsText" class="w-full p-2 border rounded mb-2" placeholder="Type text to speak..."></textarea>
+      <button id="speakBtn" class="bg-blue-600 text-white px-4 py-2 rounded w-full">Send Speech</button>
+    </div>
+
+    <div class="bg-white rounded shadow p-4">
+      <h2 class="text-xl font-semibold text-blue-600 mb-2">Voice Control</h2>
+      <button id="voiceBtn" class="bg-purple-600 text-white px-4 py-2 rounded w-full">🎤 Start Listening</button>
+    </div>
+
+    <div class="bg-white rounded shadow p-4">
+      <h2 class="text-xl font-semibold text-blue-600 mb-2">Status</h2>
+      <div id="statusMessages" class="bg-gray-100 rounded p-3 h-32 overflow-y-auto text-sm">
+        <div>Waiting for interaction...</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const connectBtn = document.getElementById('connectBtn');
+    const connectionStatus = document.getElementById('connectionStatus');
+    const statusMessages = document.getElementById('statusMessages');
+    const speakBtn = document.getElementById('speakBtn');
+    const voiceBtn = document.getElementById('voiceBtn');
+    const ttsText = document.getElementById('ttsText');
+    const controlButtons = document.querySelectorAll('.control-btn');
+
+    let device, server, rxChar, txChar;
+
+    const UART_SERVICE = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
+    const RX_CHAR = '6e400002-b5a3-f393-e0a9-e50e24dcca9e';
+    const TX_CHAR = '6e400003-b5a3-f393-e0a9-e50e24dcca9e';
+
+    function logStatus(msg) {
+      const div = document.createElement('div');
+      div.textContent = msg;
+      statusMessages.appendChild(div);
+      statusMessages.scrollTop = statusMessages.scrollHeight;
+    }
+
+    connectBtn.onclick = async () => {
+      try {
+        device = await navigator.bluetooth.requestDevice({
+          filters: [{ name: 'ESP32_Robot' }],
+          optionalServices: [UART_SERVICE]
+        });
+        server = await device.gatt.connect();
+        const service = await server.getPrimaryService(UART_SERVICE);
+        rxChar = await service.getCharacteristic(RX_CHAR);
+        txChar = await service.getCharacteristic(TX_CHAR);
+
+        await txChar.startNotifications();
+        txChar.addEventListener('characteristicvaluechanged', (e) => {
+          const msg = new TextDecoder().decode(e.target.value);
+          logStatus('Robot: ' + msg);
+        });
+
+        connectionStatus.textContent = 'Connected';
+        connectionStatus.classList.add('text-green-600');
+        controlButtons.forEach(btn => btn.disabled = false);
+        logStatus('Connected to robot.');
+      } catch (e) {
+        logStatus('Connection failed: ' + e.message);
+      }
+    };
+
+    controlButtons.forEach(btn => {
+      btn.disabled = true;
+      btn.addEventListener('click', async () => {
+        if (!rxChar) return;
+        const cmd = btn.getAttribute('data-command');
+        await rxChar.writeValue(new TextEncoder().encode(cmd));
+        logStatus('Sent: ' + cmd);
+      });
+    });
+
+    speakBtn.onclick = async () => {
+      if (!rxChar) return;
+      const text = ttsText.value.trim();
+      if (text) {
+        await rxChar.writeValue(new TextEncoder().encode('t:' + text));
+        logStatus('Sent text to robot: ' + text);
+      }
+    };
+
+    voiceBtn.onclick = () => {
+      const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+      recognition.lang = 'en-US';
+      recognition.start();
+
+      recognition.onresult = async (event) => {
+        const transcript = event.results[0][0].transcript.toLowerCase();
+        logStatus('Voice: ' + transcript);
+
+        let cmd = '';
+        if (transcript.includes('forward')) cmd = 'f';
+        else if (transcript.includes('back')) cmd = 'b';
+        else if (transcript.includes('left')) cmd = 'l';
+        else if (transcript.includes('right')) cmd = 'r';
+        else if (transcript.includes('stop')) cmd = 's';
+        else if (transcript.includes('happy')) cmd = 'h';
+        else if (transcript.includes('angry')) cmd = 'a';
+        else if (transcript.includes('joke')) cmd = 'j';
+        else cmd = 't:' + transcript;
+
+        if (cmd && rxChar) {
+          await rxChar.writeValue(new TextEncoder().encode(cmd));
+          logStatus('Sent: ' + cmd);
+        }
+      };
+
+      recognition.onerror = (e) => {
+        logStatus('Voice error: ' + e.error);
+      };
+    };
+  </script>
+</body>
+</html>
