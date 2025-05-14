@@ -1,0 +1,176 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ESP32 Robot Controller</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#5D5CDE',
+                    },
+                },
+            },
+            darkMode: 'class',
+        }
+    </script>
+    <style>
+        .control-btn {
+            transition: transform 0.1s;
+        }
+        .control-btn:active {
+            transform: scale(0.95);
+        }
+        .dark body {
+            background-color: #181818;
+            color: #f0f0f0;
+        }
+        .dark .bg-white {
+            background-color: #242424;
+        }
+        .dark .border-gray-200 {
+            border-color: #333;
+        }
+        .dark .text-gray-700 {
+            color: #e0e0e0;
+        }
+        .dark .bg-gray-100 {
+            background-color: #2a2a2a;
+        }
+        .dark .textarea-dark {
+            background-color: #333;
+            color: #f0f0f0;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen pb-20">
+<div class="container mx-auto px-4 py-8 max-w-md">
+    <h1 class="text-3xl font-bold text-center text-primary mb-6">ESP32 Robot Controller</h1>
+
+    <div class="bg-yellow-100 dark:bg-yellow-800 border-l-4 border-yellow-500 text-yellow-700 dark:text-yellow-200 p-4 mb-6 rounded-lg">
+        <p class="font-bold">Demo Mode</p>
+        <p class="text-sm">For full Bluetooth support, use Chrome on Android with HTTPS hosting.</p>
+    </div>
+
+    <div class="bg-white rounded-lg shadow-lg p-4 mb-6 border border-gray-200">
+        <h2 class="text-xl font-semibold mb-3 text-primary">Connection</h2>
+        <div class="flex flex-wrap items-center gap-3">
+            <button id="connectBtn" class="bg-primary hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-lg">
+                Connect to Robot
+            </button>
+            <div id="connectionStatus" class="text-gray-700">Disconnected</div>
+        </div>
+    </div>
+
+    <div class="bg-white rounded-lg shadow-lg p-4 mb-6 border border-gray-200">
+        <h2 class="text-xl font-semibold mb-3 text-primary">Movement</h2>
+        <div class="grid grid-cols-3 gap-2 max-w-xs mx-auto">
+            <div></div>
+            <button class="control-btn bg-primary text-white font-bold py-4 rounded-lg" data-command="f">↑</button>
+            <div></div>
+            <button class="control-btn bg-primary text-white font-bold py-4 rounded-lg" data-command="l">←</button>
+            <button class="control-btn bg-red-500 text-white font-bold py-4 rounded-lg" data-command="s">■</button>
+            <button class="control-btn bg-primary text-white font-bold py-4 rounded-lg" data-command="r">→</button>
+            <div></div>
+            <button class="control-btn bg-primary text-white font-bold py-4 rounded-lg" data-command="b">↓</button>
+            <div></div>
+        </div>
+    </div>
+
+    <div class="bg-white rounded-lg shadow-lg p-4 mb-6 border border-gray-200">
+        <h2 class="text-xl font-semibold mb-3 text-primary">Speech</h2>
+        <textarea id="ttsText" class="w-full px-3 py-2 border border-gray-300 rounded-lg mb-3" rows="3" placeholder="Say something..."></textarea>
+        <div class="flex justify-between gap-2">
+            <button id="speakBtn" class="bg-primary text-white py-2 px-4 rounded-lg flex-grow">Speak</button>
+            <button id="stopSpeakBtn" class="bg-red-500 text-white py-2 px-4 rounded-lg flex-grow">Stop</button>
+        </div>
+    </div>
+
+    <div class="bg-white rounded-lg shadow-lg p-4 mb-6 border border-gray-200">
+        <h2 class="text-xl font-semibold mb-3 text-primary">Status</h2>
+        <div id="statusMessages" class="bg-gray-100 rounded-lg p-3 h-32 overflow-y-auto text-gray-700">
+            <div>Waiting for interaction...</div>
+        </div>
+    </div>
+</div>
+
+<script>
+const connectBtn = document.getElementById('connectBtn');
+const connectionStatus = document.getElementById('connectionStatus');
+const statusMessages = document.getElementById('statusMessages');
+const speakBtn = document.getElementById('speakBtn');
+const stopSpeakBtn = document.getElementById('stopSpeakBtn');
+const ttsText = document.getElementById('ttsText');
+const controlButtons = document.querySelectorAll('.control-btn');
+
+let isConnected = false;
+const synth = window.speechSynthesis;
+let utterance = null;
+
+connectBtn.addEventListener('click', async () => {
+    if (isConnected) {
+        handleDisconnect();
+        return;
+    }
+    addStatusMessage('Connecting...');
+    await new Promise(r => setTimeout(r, 1000));
+    isConnected = true;
+    connectionStatus.textContent = 'Connected (Demo)';
+    connectionStatus.classList.add('text-green-500');
+    connectBtn.textContent = 'Disconnect';
+    controlButtons.forEach(btn => btn.disabled = false);
+    addStatusMessage('Connected to ESP32_Robot (simulated)');
+});
+
+function handleDisconnect() {
+    isConnected = false;
+    connectionStatus.textContent = 'Disconnected';
+    connectionStatus.classList.remove('text-green-500');
+    connectBtn.textContent = 'Connect to Robot';
+    controlButtons.forEach(btn => btn.disabled = true);
+    addStatusMessage('Disconnected.');
+}
+
+function addStatusMessage(msg) {
+    const el = document.createElement('div');
+    el.textContent = msg;
+    statusMessages.appendChild(el);
+    statusMessages.scrollTop = statusMessages.scrollHeight;
+}
+
+controlButtons.forEach(btn => {
+    btn.disabled = true;
+    btn.addEventListener('click', () => {
+        if (isConnected) {
+            const cmd = btn.getAttribute('data-command');
+            addStatusMessage('Sent: ' + cmd);
+        }
+    });
+});
+
+speakBtn.addEventListener('click', () => {
+    const text = ttsText.value.trim();
+    if (text && synth) {
+        if (synth.speaking) synth.cancel();
+        utterance = new SpeechSynthesisUtterance(text);
+        synth.speak(utterance);
+        addStatusMessage('Speaking: ' + text);
+    }
+});
+
+stopSpeakBtn.addEventListener('click', () => {
+    if (synth.speaking) {
+        synth.cancel();
+        addStatusMessage('Speech cancelled.');
+    }
+});
+</script>
+
+    <!-- The content of your app goes here, including all logic and DOM elements. -->
+    <!-- This content has been moved to the Canvas file for direct editing. -->
+</body>
+</html>
